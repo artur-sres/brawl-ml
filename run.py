@@ -1,6 +1,11 @@
 import sys
 import os
 
+try:
+    from data.prediction.predictor import iniciar_interface_previsao
+except ImportError:
+    iniciar_interface_previsao = None
+
 # 1. BLINDAGEM DO CAMINHO ABSOLUTO
 # Anula o erro da pasta 'data' ao forçar o interpretador a usar a raiz do projeto
 CAMINHO_RAIZ = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +38,7 @@ def menu():
         print("2. Iniciar Coleta de Dados (Motor Crawler)")
         print("3. Construir Dataset (Pré-processamento Pandas)")
         print("4. Treinar Modelo Preditivo (Scikit-Learn)")
+        print("5. Previsão de Partida")
         print("0. Sair")
         print("="*45)
         
@@ -62,13 +68,17 @@ def menu():
             else:
                 print("\n[Erro Estrutural] O módulo 'train.py' não foi encontrado.")
                 print("Crie o ficheiro na pasta 'data/prediction/' antes de usar esta opção.")
-                
+        elif escolha == '5':
+            if iniciar_interface_previsao:
+                iniciar_interface_previsao()
+            else:
+                print("\n[Erro Estrutural] O módulo 'predictor.py' não foi encontrado.")               
         elif escolha == '0':
             print("\nSistema encerrado de forma segura.")
             break
             
         else:
-            print("\n[Aviso] Opção inválida. Digite um número de 0 a 4.")
+            print("\n[Aviso] Opção inválida. Digite um número de 0 a 5.")
 
 if __name__ == "__main__":
     menu()
