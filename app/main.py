@@ -3,6 +3,8 @@ from streamlit_option_menu import option_menu
 from views.predictor_view import renderizar_previsor
 from views.trainer_view import renderizar_treinamento
 from views.draft_view import renderizar_draft
+from views.meta_view import renderizar_meta
+
 
 st.set_page_config(page_title="Brawl-ML Control", page_icon="🤖", layout="centered")
 
@@ -20,7 +22,7 @@ st.markdown("""
 with st.sidebar:
     pagina = option_menu(
         menu_title="Brawl-ML",       # Título do menu
-        options=["Chance de Vitória", "Treino & Logs", "Taxa de Vitória por Brawler", "Taxa de Vitória por Mapa", "Taxa de Vitória por Composição", "Simular Draft", "Rank de Picks por Mapa"], # Opções
+        options=["Meta", "Chance de Vitória", "Treino & Logs", "Taxa de Vitória por Brawler", "Taxa de Vitória por Mapa", "Taxa de Vitória por Composição", "Simular Draft", "Rank de Picks por Mapa"], # Opções
         icons=["controller", "cpu", "bar-chart", "map", "people", "trophy", "award"], # Ícones do Bootstrap (https://icons.getbootstrap.com/)
         menu_icon="robot",           # Ícone principal do menu
         default_index=0,             # Página que abre por defeito
@@ -33,20 +35,13 @@ with st.sidebar:
     )
 
 # --- LÓGICA DE NAVEGAÇÃO ---
-if pagina == "Chance de Vitória":
+if pagina == "Meta":
+    renderizar_meta()
+elif pagina == "Chance de Vitória":
     renderizar_previsor()
 
 elif pagina == "Treino & Logs":
     renderizar_treinamento()
 
-elif pagina == "Taxa de Vitória por Brawler":
-    st.warning("🚧 Em Construção: Esta funcionalidade será lançada em breve. Fique atento às atualizações!")
-    
-elif pagina == "Taxa de Vitória por Mapa":
-    st.warning("🚧 Em Construção: Esta funcionalidade será lançada em breve. Fique atento às atualizações!")
-    
-elif pagina == "Taxa de Vitória por Composição":
-    st.warning("🚧 Em Construção: Esta funcionalidade será lançada em breve. Fique atento às atualizações!")
-    
 elif pagina == "Simular Draft":
     renderizar_draft()
