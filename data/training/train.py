@@ -8,7 +8,7 @@ import os
 def train_model():
     print("Loading dataset...")
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.abspath(os.path.join(current_dir, "..", "..", "dataset_brawl.csv"))
+    csv_path = os.path.abspath(os.path.join(current_dir, "..", "..", "data", "storage", "dataset_brawl.csv"))
     
     try:
         df = pd.read_csv(csv_path)
@@ -65,8 +65,9 @@ def train_model():
     print("=========================================")
     
     # 5. Save AI state
-    model_path = os.path.join(current_dir, 'model_brawl.pkl')
-    columns_path = os.path.join(current_dir, 'columns_brawl.pkl')
+    root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
+    model_path = os.path.join(root_dir, 'data', 'storage', 'model.pkl')
+    columns_path = os.path.join(root_dir, 'data', 'storage', 'columns.pkl')
     
     joblib.dump(model, model_path)
     joblib.dump(X.columns.tolist(), columns_path)

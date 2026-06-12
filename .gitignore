@@ -180,9 +180,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-__pycache__/
-docs/
-brawl_data.db
-dataset_brawl.csv
-data/training/model_brawl.pkl
-data/training/columns_brawl.pkl
+# Local data storage (e.g. databases, trained models, datasets)
+data/storage/*

@@ -6,7 +6,7 @@ SCHEMA_PATH = os.path.join(CURRENT_DIR, "schema.sql")
 
 # Ensures the database is created at the project root (two folders above db.py)
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
-DB_PATH = os.path.join(PROJECT_ROOT, "brawl_data.db")
+DB_PATH = os.path.join(PROJECT_ROOT, "data", "storage", "brawl_data.db")
 
 def get_connection():
     """Establishes and returns the connection to the SQLite database."""

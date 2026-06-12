@@ -7,22 +7,22 @@ CREATE TABLE IF NOT EXISTS matches (
     duration INTEGER
 );
 
--- Players Table
+-- Players Table 
 CREATE TABLE IF NOT EXISTS players (
     tag TEXT PRIMARY KEY,
     name TEXT,
-    scanned INTEGER DEFAULT 0 -- 0 for pending, 1 for scanned
+    last_scanned DATETIME DEFAULT NULL
 );
 
 -- Match Players Relationship Table
 CREATE TABLE IF NOT EXISTS match_players (
     match_hash TEXT NOT NULL,
     player_tag TEXT NOT NULL,
-    team_id INTEGER NOT NULL, -- 0 for one team, 1 for the other
+    team_id INTEGER NOT NULL, 
     brawler_name TEXT NOT NULL,
     power INTEGER,
     trophies INTEGER,
-    result TEXT NOT NULL, -- The result was isolated here
+    result TEXT NOT NULL, 
     PRIMARY KEY (match_hash, player_tag),
     FOREIGN KEY (match_hash) REFERENCES matches(match_hash),
     FOREIGN KEY (player_tag) REFERENCES players(tag)

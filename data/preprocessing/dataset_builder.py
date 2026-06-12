@@ -107,7 +107,7 @@ def build_dataset():
     dataset = clean_community_maps(dataset)
     
     # 2. Export to CSV
-    csv_path = os.path.join(root_dir, 'dataset_brawl.csv')
+    csv_path = os.path.join(root_dir, 'data', 'storage', 'dataset_brawl.csv')
     dataset.to_csv(csv_path, index=False)
     
     print(f"\nDataset processed successfully!")

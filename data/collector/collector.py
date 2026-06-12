@@ -2,6 +2,7 @@ import requests
 import time
 import hashlib
 import os
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from data.database.db import get_connection
 
@@ -30,38 +31,50 @@ def run_collector():
         INSERT OR IGNORE INTO matches (match_hash, battle_time, mode, map, duration)
         VALUES (?, ?, ?, ?, ?)
     """
-    # Note 'scanned = 0' marks new players as pending
+    
+    # New Player goes in with NULL timestamp (meaning pending/never scanned)
     query_insert_player = """
-        INSERT OR IGNORE INTO players (tag, name, scanned)
-        VALUES (?, ?, 0)
+        INSERT OR IGNORE INTO players (tag, name, last_scanned)
+        VALUES (?, ?, NULL)
     """
+    
     query_insert_relation = """
         INSERT OR IGNORE INTO match_players 
         (match_hash, player_tag, team_id, brawler_name, power, trophies, result)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """
 
-    # 1. Inject initial seeds if the database is completely empty
-    seeds = ["#8QV90CYQ", "#8JJG8L8J9", "#90CV29899"]
-    for seed in seeds:
-        cur.execute(query_insert_player, (seed, "Unknown"))
-    conn.commit()
+    # 1. Inject initial seeds
+    cur.execute("SELECT COUNT(*) FROM players")
+    if cur.fetchone()[0] == 0:
+        print("Database empty. Discovering elite seeds to start...")
+        seeds = get_seed_players(HEADERS)
+        for seed in seeds:
+            cur.execute("INSERT OR IGNORE INTO players (tag, name, last_scanned) VALUES (?, ?, NULL)", 
+                        (seed, "Elite Seed"))
+        conn.commit()
 
-    # 2. Safety Limit Configuration
     BATCH_LIMIT = 200
     processed_targets = 0
 
     print(f"Crawler Engine started. Limit set to {BATCH_LIMIT} targets.")
 
-    # 3. Controlled Graph Execution (Crawler)
+    # Calculate the exact timestamp for 20 days ago (Cooldown window)
+    cooldown_limit = (datetime.utcnow() - timedelta(days=20)).strftime('%Y-%m-%d %H:%M:%S')
+
     try:
         while processed_targets < BATCH_LIMIT:
-            # Strictly fetch 1 player that hasn't been processed yet (scanned = 0)
-            cur.execute("SELECT tag FROM players WHERE scanned = 0 LIMIT 1")
+            # Polling mechanism: Fetch players never scanned OR scanned more than 20 days ago
+            fetch_query = """
+                SELECT tag FROM players 
+                WHERE last_scanned IS NULL OR last_scanned <= ? 
+                LIMIT 1
+            """
+            cur.execute(fetch_query, (cooldown_limit,))
             result = cur.fetchone()
             
             if not result:
-                print("Processing queue is empty. All records have been analyzed.")
+                print("Processing queue is empty or all players are currently on a 20-day cooldown.")
                 break
                 
             target_tag = result[0]
@@ -75,47 +88,62 @@ def run_collector():
             if response.status_code == 200:
                 battlelog = response.json().get("items", [])
                 
-                # VARIANCE BARRIER: Tracks maps already extracted for THIS player
-                seen_maps = set()
+                # VARIANCE BARRIER 2.0: Tracks (Map, Brawler) combinations
+                seen_combinations = set()
                 
                 for item in battlelog:
                     battle = item.get("battle", {})
                     
-                    # Filter only 3v3 mode matches (which have 'teams')
                     if "teams" not in battle:
                         continue
                         
                     map_name = item.get("event", {}).get("map")
-                    
-                    # REDUNDANCY FILTER: If the map was already processed today for this target, skip the match
-                    if map_name in seen_maps:
+                    if not map_name:
                         continue
                         
-                    # Register the map as seen and proceed with extraction
-                    seen_maps.add(map_name)
+                    # Pre-scan the teams to find which Brawler the target player used
+                    target_brawler = None
+                    for team in battle["teams"]:
+                        for p in team:
+                            if p["tag"] == target_tag:
+                                target_brawler = p.get("brawler", {}).get("name")
+                                break
+                        if target_brawler:
+                            break
+                            
+                    if not target_brawler:
+                        continue
+                        
+                    # Tuple check: Did this player already give us data for this Map WITH this Brawler?
+                    combo_key = (map_name, target_brawler)
+                    if combo_key in seen_combinations:
+                        continue
+                        
+                    # If new combo, add it and proceed
+                    seen_combinations.add(combo_key)
                     
                     battle_time = item.get("battleTime")
                     mode = battle.get("mode")
                     duration = battle.get("duration", 0)
                     
                     all_match_tags = []
-                    for team in battle["teams"]:
-                        for player in team:
-                            all_match_tags.append(player["tag"])
-                            
-                    match_hash = generate_match_hash(battle_time, all_match_tags)
-                    cur.execute(query_insert_match, (match_hash, battle_time, mode, map_name, duration))
-                    
+                    target_team_index = None
                     target_result = battle.get("result", "unknown")
-                    target_team = None
                     
                     for tid, team in enumerate(battle["teams"]):
-                        if any(p["tag"] == target_tag for p in team):
-                            target_team = tid
-                            break
+                        for player in team:
+                            all_match_tags.append(player["tag"])
+                            if player["tag"] == target_tag:
+                                target_team_index = tid
+
+                    if target_team_index is None:
+                        continue
+                        
+                    match_hash = generate_match_hash(battle_time, all_match_tags)
+                    cur.execute(query_insert_match, (match_hash, battle_time, mode, map_name, duration))
 
                     for team_id, team in enumerate(battle["teams"]):
-                        if team_id == target_team:
+                        if team_id == target_team_index:
                             team_result = target_result
                         else:
                             if target_result == "victory":
@@ -128,7 +156,7 @@ def run_collector():
                         for player in team:
                             player_tag = player.get("tag")
                             
-                            # EXPANSION HAPPENS HERE: Inserts new players into the queue
+                            # Insert new player discovered into the ecosystem
                             cur.execute(query_insert_player, (player_tag, player.get("name")))
                             
                             brawler = player.get("brawler", {})
@@ -144,29 +172,55 @@ def run_collector():
                 time.sleep(10)
                 continue
                 
-            else:
-                print(f"Error {response.status_code} ignored for target {target_tag}.")
-                
-            # 4. Mark the current target as completed (scanned = 1) to avoid repeating it
-            cur.execute("UPDATE players SET scanned = 1 WHERE tag = ?", (target_tag,))
+            # Update the player's last_scanned timestamp to CURRENT UTC time, triggering the 20-day cooldown
+            cur.execute("UPDATE players SET last_scanned = datetime('now') WHERE tag = ?", (target_tag,))
             conn.commit()
             
             processed_targets += 1
             print(f"Progress: {processed_targets}/{BATCH_LIMIT} processed.\n")
-            
             time.sleep(1)
 
         print(f"Batch of {BATCH_LIMIT} processed successfully. Safety stop.")
 
     except KeyboardInterrupt:
-        # If you press Ctrl+C in the terminal, it falls here, saves progress, and exits cleanly
         print("\n[Warning] Manual interruption detected from user.")
-        print("Saving current state and shutting down safely...")
         conn.commit()
 
     finally:
-        # Final report and shutdown
         cur.execute("SELECT COUNT(*) FROM match_players")    
         print("Total records in match_players table:", cur.fetchone()[0])
         conn.close()
-        print("Database connection closed.")
+        
+def get_all_brawler_ids(headers):
+    """Fetches all valid Brawler IDs from the API."""
+    url = f"{BASE_URL}/brawlers"
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return [b['id'] for b in response.json()['items']]
+    return []
+        
+def get_seed_players(headers):
+    """Fetches the #1 player for every brawler to seed the Crawler."""
+    # List of all brawler IDs (You can get these from the /brawlers endpoint)
+    # This is a sample, ensure you have the correct brawler IDs
+    brawler_ids = [16000000, 16000001, ...] # Exemplo de IDs
+    seeds = set()
+
+    for b_id in brawler_ids:
+        url = f"{BASE_URL}/rankings/global/brawlers/{b_id}?limit=1"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            rankings = response.json().get("items", [])
+            for item in rankings:
+                tag = item.get("tag")
+                if tag:
+                    seeds.add(tag)
+        time.sleep(0.5)  # To avoid hitting rate limits    
+        
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", 10))
+            print(f"Rate limit hit. Waiting {retry_after} seconds.")
+            time.sleep(retry_after)
+            continue      
+              
+    return seeds
