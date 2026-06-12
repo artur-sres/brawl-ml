@@ -1,5 +1,5 @@
 import pandas as pd
-df = pd.read_csv("dataset_brawl.csv")
+df = pd.read_csv("data/storage/dataset_brawl.csv")
 
 # How many times each brawler appears in the dataset
 from collections import Counter

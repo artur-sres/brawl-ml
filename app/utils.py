@@ -52,12 +52,16 @@ def load_database_data():
 
 @st.cache_resource
 def load_model():
-    """Loads the machine learning model and feature columns into cache."""
-    model_path = locate_file('modelo_brawl.pkl') or locate_file('classifier_gb_v1.pkl')
-    columns_path = locate_file('colunas_brawl.pkl') or locate_file('feature_names_v1.pkl')
+    """Loads the model and columns directly from the data/storage folder."""
+    # Define o caminho absoluto para a pasta de storage
+    base_storage = os.path.join(os.path.dirname(__file__), '..', 'data', 'storage')
     
-    if model_path and columns_path:
+    model_path = os.path.join(base_storage, 'model.pkl')
+    columns_path = os.path.join(base_storage, 'columns.pkl')
+    
+    if os.path.exists(model_path) and os.path.exists(columns_path):
         model = joblib.load(model_path)
         columns = joblib.load(columns_path)
         return model, columns
+    
     return None, None

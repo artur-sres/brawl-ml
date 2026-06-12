@@ -1,5 +1,5 @@
 import sqlite3
-conn = sqlite3.connect("brawl_data.db")
+conn = sqlite3.connect("data/storage/brawl_data.db")
 import pandas as pd
 
 # How many unique players are in the dataset
