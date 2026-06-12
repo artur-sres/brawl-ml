@@ -1,6 +1,8 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 
+from app.views.trainer_view import render_trainer
+from app.views.predictor_view import render_predictor
 from i18n import init_language, t, switch_language
 from views.meta_view import render_meta
 from views.draft_view import render_draft
@@ -25,7 +27,7 @@ with st.sidebar:
 
     page = option_menu(
         menu_title="Brawl-ML",
-        options=[t("nav_meta"), t("nav_draft")], # Adicione as outras chaves aqui
+        options=[t("nav_meta"), t("nav_draft"), t("nav_predictor")], # Adicione as outras chaves aqui
         icons=["bar-chart", "crosshair"],
         menu_icon="robot", default_index=0, 
         styles={
@@ -38,3 +40,4 @@ with st.sidebar:
 
 if page == t("nav_meta"): render_meta()
 elif page == t("nav_draft"): render_draft()
+elif page == t("nav_predictor"): render_predictor() 
