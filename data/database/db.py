@@ -1,19 +1,20 @@
 import sqlite3
 import os
 
-DIR_ATUAL = os.path.dirname(__file__)
-SCHEMA_PATH = os.path.join(DIR_ATUAL, "schema.sql")
+CURRENT_DIR = os.path.dirname(__file__)
+SCHEMA_PATH = os.path.join(CURRENT_DIR, "schema.sql")
 
-# Garante que o banco seja criado na raiz do projeto (duas pastas acima do db.py)
-RAIZ_PROJETO = os.path.abspath(os.path.join(DIR_ATUAL, "..", ".."))
-DB_PATH = os.path.join(RAIZ_PROJETO, "brawl_data.db")
+# Ensures the database is created at the project root (two folders above db.py)
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+DB_PATH = os.path.join(PROJECT_ROOT, "brawl_data.db")
 
 def get_connection():
-    """Estabelece e retorna a conexão com o banco de dados SQLite."""
+    """Establishes and returns the connection to the SQLite database."""
     conn = sqlite3.connect(DB_PATH)
     return conn
 
 def initdb():
+    """Initializes the database using the schema.sql file."""
     conn = get_connection()
     with open(SCHEMA_PATH, 'r', encoding='utf-8') as f:
         conn.executescript(f.read())

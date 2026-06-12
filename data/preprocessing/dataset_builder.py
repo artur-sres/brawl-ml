@@ -1,72 +1,74 @@
 import pandas as pd
 import os
+import sys
+
+# Ensures the root directory is recognized for absolute imports
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
 from data.database.db import get_connection
 
-def limpar_mapas_comunidade(df):
+def clean_community_maps(df):
     """
-    Remove do DataFrame todas as partidas jogadas em mapas da comunidade,
-    utilizando a pasta assets/maps como a única lista autorizada.
+    Removes matches played on community maps from the DataFrame,
+    using the assets/maps folder as the single source of truth.
     """
-    # 1. Localiza a pasta dos mapas
-    diretorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    pasta_mapas = os.path.join(diretorio_raiz, 'assets', 'maps')
+    maps_folder = os.path.join(root_dir, 'assets', 'maps')
     
-    # 2. Extrai os nomes limpos de todas as imagens .png
-    # Ex: 'Super_Beach.png' transforma-se em 'Super Beach'
-    mapas_oficiais = []
-    if os.path.exists(pasta_mapas):
-        for ficheiro in os.listdir(pasta_mapas):
-            if ficheiro.lower().endswith('.png'):
-                nome_limpo = ficheiro[:-4].replace('_', ' ')
-                mapas_oficiais.append(nome_limpo)
+    official_maps = []
+    if os.path.exists(maps_folder):
+        for filename in os.listdir(maps_folder):
+            if filename.lower().endswith('.png'):
+                clean_name = filename[:-4].replace('_', ' ')
+                official_maps.append(clean_name)
                 
-    # 3. Elimina do dataset as linhas onde o mapa não está na lista oficial
-    linhas_iniciais = len(df)
-    df_limpo = df[df['map'].isin(mapas_oficiais)]
-    linhas_removidas = linhas_iniciais - len(df_limpo)
+    initial_rows = len(df)
+    clean_df = df[df['map'].isin(official_maps)]
+    rows_removed = initial_rows - len(clean_df)
     
-    print(f"Filtro de Ruído: {linhas_removidas} partidas em mapas da comunidade foram ignoradas.")
-    return df_limpo
+    print(f"Noise Filter: {rows_removed} matches on community maps were ignored.")
+    return clean_df
 
-def construir_dataset():
-    print("A extrair dados relacionais da base de dados...")
+def build_dataset():
+    """Extracts relational data from the database and compiles the CSV matrix."""
+    print("Extracting relational data from the database...")
     conn = get_connection()
     
-    # 1. Nova Query: Agora inclui 'power' e 'trophies'
-    # 1. Nova Query com Blacklist de Modos
-    # Pode adicionar qualquer modo que não queira nesta tupla (mantenha as aspas)
-    modos_ignorados = ('duoShowdown', 'soloShowdown', 'siege', 'bigGame', 'bossFight', 'roboRumble', 'trophyThieves', 'wipeout', 'botDrop')
+    # Blacklist of non-competitive or irrelevant modes
+    ignored_modes = ('duoShowdown', 'soloShowdown', 'siege', 'bigGame', 'bossFight', 'roboRumble')
     
     query = f"""
     SELECT 
         m.match_hash, m.mode, m.map, 
-        mp.team_id, mp.brawler_name, mp.power, mp.trophies, mp.result
+        mp.team_id, mp.brawler_name, mp.result
     FROM matches m
     JOIN match_players mp ON m.match_hash = mp.match_hash
-    WHERE m.mode NOT IN {modos_ignorados}
+    WHERE m.mode NOT IN {ignored_modes}
     """
     df_raw = pd.read_sql_query(query, conn)
     conn.close()
 
     if df_raw.empty:
-        print("Erro: A base de dados não contém dados para processar.")
+        print("Error: The database contains no data to process.")
         return
 
-    print(f"Extraídas {len(df_raw)} linhas brutas. A iniciar engenharia de variáveis (Feature Engineering)...")
+    print(f"Extracted {len(df_raw)} raw rows. Starting Feature Engineering...")
     
-    dados_planos = []
-    agrupado = df_raw.groupby('match_hash')
+    flat_data = []
+    grouped = df_raw.groupby('match_hash')
 
-    for match_hash, grupo in agrupado:
-        if len(grupo) != 6:
+    for match_hash, group in grouped:
+        # Ensures only full 3v3 matches are processed
+        if len(group) != 6:
             continue
 
-        info_partida = grupo.iloc[0]
-        modo = info_partida['mode']
-        mapa = info_partida['map']
+        match_info = group.iloc[0]
+        mode = match_info['mode']
+        map_name = match_info['map']
 
-        t0 = grupo[grupo['team_id'] == 0]
-        t1 = grupo[grupo['team_id'] == 1]
+        t0 = group[group['team_id'] == 0]
+        t1 = group[group['team_id'] == 1]
 
         if len(t0) != 3 or len(t1) != 3:
             continue
@@ -74,22 +76,22 @@ def construir_dataset():
         brawlers_t0 = t0['brawler_name'].tolist()
         brawlers_t1 = t1['brawler_name'].tolist()
         
-        # Invariância Permutacional
+        # Permutational Invariance: Sorts names alphabetically so order doesn't matter
         brawlers_t0.sort()
         brawlers_t1.sort()
 
-        resultado_t0 = t0['result'].iloc[0]
+        result_t0 = t0['result'].iloc[0]
 
-        if resultado_t0 in ['draw', 'unknown']:
+        if result_t0 in ['draw', 'unknown']:
             continue 
 
-        target = 1 if resultado_t0 == 'victory' else 0
+        target = 1 if result_t0 == 'victory' else 0
 
-        # Montagem da matriz final
-        dados_planos.append({
+        # Assembly of the final matrix (Pure Meta: no power or trophies)
+        flat_data.append({
             'match_hash': match_hash,
-            'mode': modo,
-            'map': mapa,
+            'mode': mode,
+            'map': map_name,
             't0_brawler_1': brawlers_t0[0],
             't0_brawler_2': brawlers_t0[1],
             't0_brawler_3': brawlers_t0[2],
@@ -99,15 +101,17 @@ def construir_dataset():
             'target': target
         })
 
-    dataset = pd.DataFrame(dados_planos)
-    dataset = limpar_mapas_comunidade(dataset)
+    dataset = pd.DataFrame(flat_data)
     
-    diretorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    caminho_csv = os.path.join(diretorio_raiz, 'dataset_brawl.csv')
+    # 1. Apply Community Maps Filter
+    dataset = clean_community_maps(dataset)
     
-    dataset.to_csv(caminho_csv, index=False)
-    print(f"\nDataset processado com sucesso!")
-    print(f"Total de partidas limpas e válidas para treino: {len(dataset)}")
+    # 2. Export to CSV
+    csv_path = os.path.join(root_dir, 'dataset_brawl.csv')
+    dataset.to_csv(csv_path, index=False)
+    
+    print(f"\nDataset processed successfully!")
+    print(f"Total clean and valid matches for training: {len(dataset)}")
 
 if __name__ == "__main__":
-    construir_dataset()
+    build_dataset()

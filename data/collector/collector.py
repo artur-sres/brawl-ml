@@ -7,18 +7,18 @@ from data.database.db import get_connection
 
 BASE_URL = "https://api.brawlstars.com/v1"
 
-def gerar_match_hash(battle_time, lista_tags):
-    """Gera um ID único e determinístico para a partida."""
-    tags_ordenadas = sorted(lista_tags)
-    string_base = battle_time + "".join(tags_ordenadas)
-    return hashlib.sha256(string_base.encode('utf-8')).hexdigest()
+def generate_match_hash(battle_time, tag_list):
+    """Generates a unique and deterministic ID for the match."""
+    sorted_tags = sorted(tag_list)
+    base_string = battle_time + "".join(sorted_tags)
+    return hashlib.sha256(base_string.encode('utf-8')).hexdigest()
 
-def executar_coleta():
-    """Função principal que orquestra a coleta de dados da API em formato Crawler."""
+def run_collector():
+    """Main function that orchestrates data collection from the API as a Crawler."""
     load_dotenv()
     TOKEN = os.getenv("BRAWL_API_TOKEN")
     if not TOKEN:
-        print("Erro Crítico: BRAWL_API_TOKEN não encontrado no ficheiro .env.")
+        print("Critical Error: BRAWL_API_TOKEN not found in the .env file.")
         return
         
     HEADERS = {"Authorization": f"Bearer {TOKEN}"}
@@ -26,147 +26,147 @@ def executar_coleta():
     conn = get_connection()
     cur = conn.cursor()
 
-    query_inserir_partida = """
+    query_insert_match = """
         INSERT OR IGNORE INTO matches (match_hash, battle_time, mode, map, duration)
         VALUES (?, ?, ?, ?, ?)
     """
-    # Note o 'scanned = 0' que marca os novos jogadores como pendentes
-    query_inserir_jogador = """
+    # Note 'scanned = 0' marks new players as pending
+    query_insert_player = """
         INSERT OR IGNORE INTO players (tag, name, scanned)
         VALUES (?, ?, 0)
     """
-    query_inserir_relacao = """
+    query_insert_relation = """
         INSERT OR IGNORE INTO match_players 
         (match_hash, player_tag, team_id, brawler_name, power, trophies, result)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """
 
-    # 1. Injeta as sementes iniciais caso a base de dados esteja completamente vazia
-    sementes = ["#8QV90CYQ", "#8JJG8L8J9", "#90CV29899"]
-    for semente in sementes:
-        cur.execute(query_inserir_jogador, (semente, "Desconhecido"))
+    # 1. Inject initial seeds if the database is completely empty
+    seeds = ["#8QV90CYQ", "#8JJG8L8J9", "#90CV29899"]
+    for seed in seeds:
+        cur.execute(query_insert_player, (seed, "Unknown"))
     conn.commit()
 
-    # 2. Configuração do Limite de Segurança
-    LIMITE_POR_LOTE = 200
-    alvos_processados = 0
+    # 2. Safety Limit Configuration
+    BATCH_LIMIT = 200
+    processed_targets = 0
 
-    print(f"Motor Crawler iniciado. Limite configurado para {LIMITE_POR_LOTE} alvos.")
+    print(f"Crawler Engine started. Limit set to {BATCH_LIMIT} targets.")
 
-    # 3. Execução Controlada do Grafo (Crawler)
+    # 3. Controlled Graph Execution (Crawler)
     try:
-        while alvos_processados < LIMITE_POR_LOTE:
-            # Busca estritamente 1 jogador que ainda não foi processado (scanned = 0)
+        while processed_targets < BATCH_LIMIT:
+            # Strictly fetch 1 player that hasn't been processed yet (scanned = 0)
             cur.execute("SELECT tag FROM players WHERE scanned = 0 LIMIT 1")
-            resultado = cur.fetchone()
+            result = cur.fetchone()
             
-            if not resultado:
-                print("Fila de processamento vazia. Todos os registos foram analisados.")
+            if not result:
+                print("Processing queue is empty. All records have been analyzed.")
                 break
                 
-            tag_alvo = resultado[0]
-            print(f"[{time.strftime('%H:%M:%S')}] A processar alvo: {tag_alvo}")
+            target_tag = result[0]
+            print(f"[{time.strftime('%H:%M:%S')}] Processing target: {target_tag}")
             
-            tag_formatada = tag_alvo.replace("#", "%23")
-            url = f"{BASE_URL}/players/{tag_formatada}/battlelog"
+            formatted_tag = target_tag.replace("#", "%23")
+            url = f"{BASE_URL}/players/{formatted_tag}/battlelog"
             
-            resposta = requests.get(url, headers=HEADERS)
+            response = requests.get(url, headers=HEADERS)
             
-            if resposta.status_code == 200:
-                battlelog = resposta.json().get("items", [])
+            if response.status_code == 200:
+                battlelog = response.json().get("items", [])
                 
-                # BARREIRA DE VARIÂNCIA: Rastreia os mapas já extraídos para ESTE jogador
-                mapas_vistos = set()
+                # VARIANCE BARRIER: Tracks maps already extracted for THIS player
+                seen_maps = set()
                 
                 for item in battlelog:
                     battle = item.get("battle", {})
                     
-                    # Filtra apenas partidas de modo 3v3 (que possuem 'teams')
+                    # Filter only 3v3 mode matches (which have 'teams')
                     if "teams" not in battle:
                         continue
                         
                     map_name = item.get("event", {}).get("map")
                     
-                    # FILTRO DE REDUNDÂNCIA: Se o mapa já foi processado hoje para este alvo, salta a partida
-                    if map_name in mapas_vistos:
+                    # REDUNDANCY FILTER: If the map was already processed today for this target, skip the match
+                    if map_name in seen_maps:
                         continue
                         
-                    # Registra o mapa como visto e prossegue com a extração
-                    mapas_vistos.add(map_name)
+                    # Register the map as seen and proceed with extraction
+                    seen_maps.add(map_name)
                     
                     battle_time = item.get("battleTime")
                     mode = battle.get("mode")
                     duration = battle.get("duration", 0)
                     
-                    todas_tags_partida = []
+                    all_match_tags = []
                     for team in battle["teams"]:
                         for player in team:
-                            todas_tags_partida.append(player["tag"])
+                            all_match_tags.append(player["tag"])
                             
-                    match_hash = gerar_match_hash(battle_time, todas_tags_partida)
-                    cur.execute(query_inserir_partida, (match_hash, battle_time, mode, map_name, duration))
+                    match_hash = generate_match_hash(battle_time, all_match_tags)
+                    cur.execute(query_insert_match, (match_hash, battle_time, mode, map_name, duration))
                     
-                    resultado_alvo = battle.get("result", "unknown")
-                    team_do_alvo = None
+                    target_result = battle.get("result", "unknown")
+                    target_team = None
                     
                     for tid, team in enumerate(battle["teams"]):
-                        if any(p["tag"] == tag_alvo for p in team):
-                            team_do_alvo = tid
+                        if any(p["tag"] == target_tag for p in team):
+                            target_team = tid
                             break
 
                     for team_id, team in enumerate(battle["teams"]):
-                        if team_id == team_do_alvo:
-                            resultado_time = resultado_alvo
+                        if team_id == target_team:
+                            team_result = target_result
                         else:
-                            if resultado_alvo == "victory":
-                                resultado_time = "defeat"
-                            elif resultado_alvo == "defeat":
-                                resultado_time = "victory"
+                            if target_result == "victory":
+                                team_result = "defeat"
+                            elif target_result == "defeat":
+                                team_result = "victory"
                             else:
-                                resultado_time = resultado_alvo
+                                team_result = target_result
                         
                         for player in team:
                             player_tag = player.get("tag")
                             
-                            # AQUI ACONTECE A EXPANSÃO: Insere os novos jogadores na fila
-                            cur.execute(query_inserir_jogador, (player_tag, player.get("name")))
+                            # EXPANSION HAPPENS HERE: Inserts new players into the queue
+                            cur.execute(query_insert_player, (player_tag, player.get("name")))
                             
                             brawler = player.get("brawler", {})
-                            dados_relacao = (
+                            relation_data = (
                                 match_hash, player_tag, team_id, 
                                 brawler.get("name"), brawler.get("power"), 
-                                brawler.get("trophies"), resultado_time
+                                brawler.get("trophies"), team_result
                             )
-                            cur.execute(query_inserir_relacao, dados_relacao)
+                            cur.execute(query_insert_relation, relation_data)
                             
-            elif resposta.status_code == 429:
-                print("Limite de taxa da API excedido. A pausar por 10 segundos.")
+            elif response.status_code == 429:
+                print("API rate limit exceeded. Pausing for 10 seconds.")
                 time.sleep(10)
                 continue
                 
             else:
-                print(f"Erro {resposta.status_code} ignorado no alvo {tag_alvo}.")
+                print(f"Error {response.status_code} ignored for target {target_tag}.")
                 
-            # 4. Marca o alvo atual como concluído (scanned = 1) para não o repetir
-            cur.execute("UPDATE players SET scanned = 1 WHERE tag = ?", (tag_alvo,))
+            # 4. Mark the current target as completed (scanned = 1) to avoid repeating it
+            cur.execute("UPDATE players SET scanned = 1 WHERE tag = ?", (target_tag,))
             conn.commit()
             
-            alvos_processados += 1
-            print(f"Progresso: {alvos_processados}/{LIMITE_POR_LOTE} processados.\n")
+            processed_targets += 1
+            print(f"Progress: {processed_targets}/{BATCH_LIMIT} processed.\n")
             
             time.sleep(1)
 
-        print(f"Lote de {LIMITE_POR_LOTE} processado com sucesso. Paragem de segurança.")
+        print(f"Batch of {BATCH_LIMIT} processed successfully. Safety stop.")
 
     except KeyboardInterrupt:
-        # Se você apertar Ctrl+C no terminal, ele cai aqui, salva o que fez e fecha limpo
-        print("\n[Aviso] Interrupção manual detetada pelo utilizador.")
-        print("A guardar o estado atual e a encerrar de forma segura...")
+        # If you press Ctrl+C in the terminal, it falls here, saves progress, and exits cleanly
+        print("\n[Warning] Manual interruption detected from user.")
+        print("Saving current state and shutting down safely...")
         conn.commit()
 
     finally:
-        # Relatório final e encerramento
+        # Final report and shutdown
         cur.execute("SELECT COUNT(*) FROM match_players")    
-        print("Total de registos na tabela match_players:", cur.fetchone()[0])
+        print("Total records in match_players table:", cur.fetchone()[0])
         conn.close()
-        print("Ligação à base de dados encerrada.")
+        print("Database connection closed.")

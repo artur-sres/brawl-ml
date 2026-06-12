@@ -5,105 +5,72 @@ from sklearn.metrics import accuracy_score, classification_report
 import joblib
 import os
 
-def treinar_modelo():
-    print("A carregar o dataset...")
-    
-    # Ajuste este caminho dependendo de onde guardar o train.py
-    # Este código pressupõe que o train.py está dentro de data/prediction/
-    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
-    caminho_csv = os.path.abspath(os.path.join(diretorio_atual, "..", "..", "dataset_brawl.csv"))
+def train_model():
+    print("Loading dataset...")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.abspath(os.path.join(current_dir, "..", "..", "dataset_brawl.csv"))
     
     try:
-        df = pd.read_csv(caminho_csv)
+        df = pd.read_csv(csv_path)
     except FileNotFoundError:
-        print(f"Erro Crítico: Ficheiro não encontrado no caminho {caminho_csv}")
+        print(f"Critical Error: File not found at {csv_path}")
         return
 
-    print(f"Dataset carregado com {len(df)} partidas. A iniciar transformação matricial...")
+    print(f"Dataset loaded with {len(df)} matches. Starting matrix transformation...")
 
-    # 1. Transformar Variáveis Categóricas Básicas (Modo e Mapa)
-    # Converte 'mode' e 'map' em colunas de 0 e 1
+    # 1. Transform Basic Categorical Variables
     df_encoded = pd.get_dummies(df, columns=['mode', 'map'])
 
-# 2. Transformação do Grafo de Equipas (Multi-Hot Encoding)
-    print("A nivelar a ordem dos Brawlers (Invariância Permutacional)...")
-    todos_brawlers = set(df['t0_brawler_1']).union(
+    # 2. Team Graph Transformation (Multi-Hot Encoding)
+    print("Flattening Brawler order (Permutational Invariance)...")
+    all_brawlers = set(df['t0_brawler_1']).union(
         df['t0_brawler_2'], df['t0_brawler_3'],
         df['t1_brawler_1'], df['t1_brawler_2'], df['t1_brawler_3']
     )
 
-    # CORREÇÃO DE PERFORMANCE: Criação de todas as colunas de uma vez só em um dicionário
-    novas_colunas = {}
-    for brawler in todos_brawlers:
-        novas_colunas[f't0_{brawler}'] = 0
-        novas_colunas[f't1_{brawler}'] = 0
+    new_columns = {}
+    for brawler in all_brawlers:
+        new_columns[f't0_{brawler}'] = 0
+        new_columns[f't1_{brawler}'] = 0
 
-    # Converte o dicionário em DataFrame temporário e une ao principal sem fragmentar a memória
-    df_novas = pd.DataFrame(novas_colunas, index=df_encoded.index)
-    df_encoded = pd.concat([df_encoded, df_novas], axis=1)
+    df_new = pd.DataFrame(new_columns, index=df_encoded.index)
+    df_encoded = pd.concat([df_encoded, df_new], axis=1)
 
-    # Povoamento binário: assinala '1' se o brawler estiver na equipe, ignorando o slot
     for i in range(1, 4):
-        for brawler in todos_brawlers:
+        for brawler in all_brawlers:
             df_encoded.loc[df[f't0_brawler_{i}'] == brawler, f't0_{brawler}'] = 1
             df_encoded.loc[df[f't1_brawler_{i}'] == brawler, f't1_{brawler}'] = 1
 
-    # Remoção do "ruído" (strings originais e hashes irrelevantes para cálculo)
-    colunas_texto = ['match_hash', 't0_brawler_1', 't0_brawler_2', 't0_brawler_3',
-                     't1_brawler_1', 't1_brawler_2', 't1_brawler_3']
-    df_encoded = df_encoded.drop(columns=colunas_texto)
+    text_columns = ['match_hash', 't0_brawler_1', 't0_brawler_2', 't0_brawler_3',
+                    't1_brawler_1', 't1_brawler_2', 't1_brawler_3']
+    df_encoded = df_encoded.drop(columns=text_columns)
 
-    # 3. Definição do Alvo (O que queremos prever) e Funcionalidades (O que usamos para prever)
+    # 3. Define Target and Features
     X = df_encoded.drop(columns=['target'])
     y = df_encoded['target']
 
-    # Separação: 80% para ensinar a máquina, 20% para a testar às cegas
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    print("A iniciar o treino do Algoritmo Gradient Boosting...")
-    
-    # O Gradient Boosting aprende sequencialmente. 
-    # n_estimators: Número de iterações de correção de erro.
-    # learning_rate: Impede que o modelo tome decisões demasiado drásticas de uma só vez.
-    # max_depth: Limita a profundidade para evitar memorização excessiva (Overfitting).
-    modelo = GradientBoostingClassifier(
-        n_estimators=200, 
-        learning_rate=0.05, 
-        max_depth=4, 
-        random_state=42
-    )
-    modelo.fit(X_train, y_train)
+    print("Starting Gradient Boosting Algorithm training...")
+    model = GradientBoostingClassifier(n_estimators=200, learning_rate=0.05, max_depth=4, random_state=42)
+    model.fit(X_train, y_train)
 
-    # 4. Avaliação Matemática
-    print("\nA extrair previsões sobre os dados de teste...")
-    previsoes = modelo.predict(X_test)
-    precisao = accuracy_score(y_test, previsoes)
+    # 4. Mathematical Evaluation
+    predictions = model.predict(X_test)
+    accuracy = accuracy_score(y_test, predictions)
 
-    print("\n================ RESULTADOS ================")
-    print(f"Precisão Base (Accuracy): {precisao * 100:.2f}%")
-    print("--------------------------------------------")
-    print(classification_report(y_test, previsoes, target_names=['Derrota Eq.0', 'Vitória Eq.0']))
-    print("============================================")
+    print("\n================ RESULTS ================")
+    print(f"Base Accuracy: {accuracy * 100:.2f}%")
+    print(classification_report(y_test, predictions, target_names=['Team 0 Defeat', 'Team 0 Victory']))
+    print("=========================================")
     
-    # NOVO BLOCO: Auditoria Matemática de Variáveis
-    importancias = modelo.feature_importances_
-    df_importancias = pd.DataFrame({'Variavel': X.columns, 'Peso_Matematico': importancias})
-    # Ordena as variáveis da que tem mais impacto para a que tem menos
-    df_importancias = df_importancias.sort_values(by='Peso_Matematico', ascending=False)
+    # 5. Save AI state
+    model_path = os.path.join(current_dir, 'model_brawl.pkl')
+    columns_path = os.path.join(current_dir, 'columns_brawl.pkl')
     
-    print("\n--- TOP 10 VARIÁVEIS DE MAIOR IMPACTO NA PREVISÃO ---")
-    print(df_importancias.head(10).to_string(index=False))
-    print("-----------------------------------------------------")
-
-    # 5. Guardar o estado cerebral da IA
-    caminho_modelo = os.path.join(diretorio_atual, 'modelo_brawl.pkl')
-    caminho_colunas = os.path.join(diretorio_atual, 'colunas_brawl.pkl')
-    
-    joblib.dump(modelo, caminho_modelo)
-    joblib.dump(X.columns.tolist(), caminho_colunas)
-    
-    print(f"\nModelo matemático exportado: {caminho_modelo}")
-    print("O ficheiro .pkl pode agora ser invocado para fazer previsões em tempo real.")
+    joblib.dump(model, model_path)
+    joblib.dump(X.columns.tolist(), columns_path)
+    print(f"\nMathematical model exported to: {model_path}")
 
 if __name__ == "__main__":
-    treinar_modelo()
+    train_model()

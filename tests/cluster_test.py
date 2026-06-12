@@ -1,12 +1,12 @@
 import sqlite3
-conn = sqlite3.connect("brawl_data.db")  # ajuste o caminho se necessário
+conn = sqlite3.connect("brawl_data.db")
 import pandas as pd
 
-# Quantos jogadores únicos existem
+# How many unique players are in the dataset
 df_players = pd.read_sql_query("SELECT COUNT(*) as total FROM players", conn)
 print("Jogadores únicos:", df_players['total'][0])
 
-# Top 10 jogadores que mais aparecem em match_players
+# Top 10 most frequent players in the dataset
 df_top = pd.read_sql_query("""
     SELECT player_tag, COUNT(*) as aparicoes 
     FROM match_players 

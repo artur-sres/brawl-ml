@@ -1,53 +1,48 @@
 import pandas as pd
 
-def calcular_probabilidade_estatica(modelo, colunas_treino, modo, mapa, equipa_0, equipa_1):
-    """Calcula a probabilidade de uma partida completa."""
-    entrada = pd.DataFrame(0, index=[0], columns=colunas_treino)
+def calculate_static_probability(model, training_columns, mode, map_name, team_0, team_1):
+    """Calculates the probability for a complete 3v3 match."""
+    input_data = pd.DataFrame(0, index=[0], columns=training_columns)
     
-    if f'mode_{modo}' in colunas_treino: entrada.at[0, f'mode_{modo}'] = 1
-    if f'map_{mapa}' in colunas_treino: entrada.at[0, f'map_{mapa}'] = 1
+    if f'mode_{mode}' in training_columns: input_data.at[0, f'mode_{mode}'] = 1
+    if f'map_{map_name}' in training_columns: input_data.at[0, f'map_{map_name}'] = 1
     
-    for b in equipa_0:
-        if f't0_{b}' in colunas_treino: entrada.at[0, f't0_{b}'] = 1
-    for b in equipa_1:
-        if f't1_{b}' in colunas_treino: entrada.at[0, f't1_{b}'] = 1
+    for b in team_0:
+        if f't0_{b}' in training_columns: input_data.at[0, f't0_{b}'] = 1
+    for b in team_1:
+        if f't1_{b}' in training_columns: input_data.at[0, f't1_{b}'] = 1
         
-    probabilidades = modelo.predict_proba(entrada)[0]
-    return probabilidades[0] * 100, probabilidades[1] * 100
+    probabilities = model.predict_proba(input_data)[0]
+    return probabilities[0] * 100, probabilities[1] * 100
 
-def recomendar_brawlers_draft(modelo, colunas_treino, modo, mapa, aliados, inimigos, brawlers_validos):
-    """Executa simulações vetorizadas para preencher uma vaga na equipa aliada em milissegundos."""
-    todos_selecionados = aliados + inimigos
-    candidatos = [b for b in brawlers_validos if b not in todos_selecionados]
+def recommend_draft_brawlers(model, training_columns, mode, map_name, allies, enemies, valid_brawlers):
+    """Executes vectorized simulations to fill an empty slot in the allied team."""
+    selected_brawlers = allies + enemies
+    candidates = [b for b in valid_brawlers if b not in selected_brawlers]
     
-    if not candidatos:
-        return []
+    if not candidates: return []
 
-    # 1. Cria a linha base com os dados estáticos da partida
-    base_df = pd.DataFrame(0, index=[0], columns=colunas_treino)
-    if f'mode_{modo}' in colunas_treino: base_df.at[0, f'mode_{modo}'] = 1
-    if f'map_{mapa}' in colunas_treino: base_df.at[0, f'map_{mapa}'] = 1
+    base_df = pd.DataFrame(0, index=[0], columns=training_columns)
+    if f'mode_{mode}' in training_columns: base_df.at[0, f'mode_{mode}'] = 1
+    if f'map_{map_name}' in training_columns: base_df.at[0, f'map_{map_name}'] = 1
     
-    for b in aliados:
-        if f't0_{b}' in colunas_treino: base_df.at[0, f't0_{b}'] = 1
-    for b in inimigos:
-        if f't1_{b}' in colunas_treino: base_df.at[0, f't1_{b}'] = 1
+    for b in allies:
+        if f't0_{b}' in training_columns: base_df.at[0, f't0_{b}'] = 1
+    for b in enemies:
+        if f't1_{b}' in training_columns: base_df.at[0, f't1_{b}'] = 1
 
-    # 2. Vetorização: Multiplica a linha base para o número exato de candidatos
-    df_simulacao = pd.concat([base_df] * len(candidatos), ignore_index=True)
+    simulation_df = pd.concat([base_df] * len(candidates), ignore_index=True)
     
-    # 3. Injeta cada candidato na sua respetiva linha (processamento rápido em memória)
-    for i, candidato in enumerate(candidatos):
-        if f't0_{candidato}' in colunas_treino:
-            df_simulacao.at[i, f't0_{candidato}'] = 1
+    for i, candidate in enumerate(candidates):
+        if f't0_{candidate}' in training_columns:
+            simulation_df.at[i, f't0_{candidate}'] = 1
             
-    # 4. Inferência em Bloco: O modelo prevê todas as combinações simultaneamente
-    probabilidades = modelo.predict_proba(df_simulacao)
+    probabilities = model.predict_proba(simulation_df)
     
-    resultados = []
-    for i, candidato in enumerate(candidatos):
-        prob_vitoria = probabilidades[i][1] * 100
-        resultados.append((candidato, prob_vitoria))
+    results = []
+    for i, candidate in enumerate(candidates):
+        win_prob = probabilities[i][1] * 100
+        results.append((candidate, win_prob))
         
-    resultados.sort(key=lambda x: x[1], reverse=True)
-    return resultados[:5]
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results[:5]

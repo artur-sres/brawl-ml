@@ -182,3 +182,7 @@ cython_debug/
 
 __pycache__/
 docs/
+brawl_data.db
+dataset_brawl.csv
+data/training/model_brawl.pkl
+data/training/columns_brawl.pkl

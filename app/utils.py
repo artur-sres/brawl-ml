@@ -3,59 +3,61 @@ import sqlite3
 import joblib
 import streamlit as st
 
-def localizar_arquivo(nome_arquivo):
-    """Varre todo o projeto autonomamente à procura do ficheiro, ignorando maiúsculas/minúsculas."""
-    diretorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+def locate_file(filename):
+    """Scans the entire project to find the file, ignoring case sensitivity."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    target_name_lower = filename.lower()
     
-    # Converte o nome procurado para minúsculas logo à partida
-    nome_procurado_lower = nome_arquivo.lower()
-    
-    for root, dirs, files in os.walk(diretorio_raiz):
+    for root, dirs, files in os.walk(root_dir):
         for file in files:
-            # Compara a versão minúscula do ficheiro atual com o procurado
-            if file.lower() == nome_procurado_lower:
+            if file.lower() == target_name_lower:
                 return os.path.join(root, file)
                 
     return None
 
 @st.cache_data
-def carregar_dados_banco():
-    """Lê a base de dados em cache e filtra os modos indesejados."""
-    caminho_db = localizar_arquivo('brawl_data.db') or localizar_arquivo('raw_events.sqlite')
-    if not caminho_db:
+def load_database_data():
+    """Reads the database in cache and filters out unwanted modes and community maps."""
+    db_path = locate_file('brawl_data.db') or locate_file('raw_events.sqlite')
+    if not db_path:
         return [], {}, []
 
-    conn = sqlite3.connect(caminho_db)
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
-    # Blacklist para a interface
-    MODOS_IGNORADOS = ['duoShowdown', 'soloShowdown', 'siege', 'bigGame', 'bossFight', 'roboRumble']
+    IGNORED_MODES = ['duoShowdown', 'soloShowdown', 'siege', 'bigGame', 'bossFight', 'roboRumble']
 
     cur.execute("SELECT DISTINCT mode FROM matches")
-    modos_brutos = [row[0] for row in cur.fetchall()]
-    
-    # Filtra: Só guarda o modo se ele NÃO estiver na blacklist
-    modos = [m for m in modos_brutos if m not in MODOS_IGNORADOS]
+    raw_modes = [row[0] for row in cur.fetchall()]
+    modes = [m for m in raw_modes if m not in IGNORED_MODES]
 
-    mapas_por_modo = {}
-    for modo in modos:
-        cur.execute("SELECT DISTINCT map FROM matches WHERE mode = ?", (modo,))
-        mapas_por_modo[modo] = [row[0] for row in cur.fetchall()]
+    maps_by_mode = {}
+    for mode in modes:
+        cur.execute("SELECT DISTINCT map FROM matches WHERE mode = ?", (mode,))
+        raw_maps = [row[0] for row in cur.fetchall()]
+        
+        official_maps = []
+        for b_map in raw_maps:
+            if locate_file(f"{b_map.replace(' ', '_')}.png"):
+                official_maps.append(b_map)
+        
+        if official_maps:
+            maps_by_mode[mode] = official_maps
 
     cur.execute("SELECT DISTINCT brawler_name FROM match_players")
-    brawlers_validos = sorted([row[0].upper() for row in cur.fetchall()])
+    valid_brawlers = sorted([row[0].upper() for row in cur.fetchall()])
 
     conn.close()
-    return modos, mapas_por_modo, brawlers_validos
+    return modes, maps_by_mode, valid_brawlers
 
 @st.cache_resource
-def carregar_modelo():
-    """Lê a matriz matemática da Inteligência Artificial em cache."""
-    caminho_modelo = localizar_arquivo('modelo_brawl.pkl') or localizar_arquivo('classifier_gb_v1.pkl')
-    caminho_colunas = localizar_arquivo('colunas_brawl.pkl') or localizar_arquivo('feature_names_v1.pkl')
+def load_model():
+    """Loads the machine learning model and feature columns into cache."""
+    model_path = locate_file('modelo_brawl.pkl') or locate_file('classifier_gb_v1.pkl')
+    columns_path = locate_file('colunas_brawl.pkl') or locate_file('feature_names_v1.pkl')
     
-    if caminho_modelo and caminho_colunas:
-        modelo = joblib.load(caminho_modelo)
-        colunas = joblib.load(caminho_colunas)
-        return modelo, colunas
+    if model_path and columns_path:
+        model = joblib.load(model_path)
+        columns = joblib.load(columns_path)
+        return model, columns
     return None, None

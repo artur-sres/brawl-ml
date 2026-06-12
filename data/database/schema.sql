@@ -1,4 +1,4 @@
--- Tabela de Partidas
+-- Matches Table
 CREATE TABLE IF NOT EXISTS matches (
     match_hash TEXT PRIMARY KEY,
     battle_time TEXT NOT NULL,
@@ -7,22 +7,22 @@ CREATE TABLE IF NOT EXISTS matches (
     duration INTEGER
 );
 
--- Tabela de Jogadores
+-- Players Table
 CREATE TABLE IF NOT EXISTS players (
     tag TEXT PRIMARY KEY,
     name TEXT,
-    scanned INTEGER DEFAULT 0 -- 0 para pendente, 1 para concluído
+    scanned INTEGER DEFAULT 0 -- 0 for pending, 1 for scanned
 );
 
--- Tabela de Relação 
+-- Match Players Relationship Table
 CREATE TABLE IF NOT EXISTS match_players (
     match_hash TEXT NOT NULL,
     player_tag TEXT NOT NULL,
-    team_id INTEGER NOT NULL, -- 0 para um time, 1 para o outro
+    team_id INTEGER NOT NULL, -- 0 for one team, 1 for the other
     brawler_name TEXT NOT NULL,
     power INTEGER,
     trophies INTEGER,
-    result TEXT NOT NULL, -- O resultado foi isolado aqui
+    result TEXT NOT NULL, -- The result was isolated here
     PRIMARY KEY (match_hash, player_tag),
     FOREIGN KEY (match_hash) REFERENCES matches(match_hash),
     FOREIGN KEY (player_tag) REFERENCES players(tag)

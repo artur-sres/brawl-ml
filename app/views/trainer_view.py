@@ -3,117 +3,78 @@ import sqlite3
 import os
 import sys
 
-from data.training.train import treinar_modelo
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 
-# Garante que o interpretador reconhece a raiz do projeto para fazer os imports
-diretorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if diretorio_raiz not in sys.path:
-    sys.path.append(diretorio_raiz)
+from data.collector.collector import run_collector 
+from data.preprocessing.dataset_builder import build_dataset 
+from data.training.train import train_model
 
-# Importa as funções originais do seu projeto
-from data.collector.collector import executar_coleta
-# IMPORTANTE: Descomente a linha abaixo e ajuste o nome da função de acordo com o seu train.py
-# from data.training.train import sua_funcao_de_treino 
+from utils import locate_file
+from i18n import t
 
-import streamlit as st
-import sqlite3
-import os
-import sys
-
-# Garante que o interpretador reconhece a raiz do projeto para fazer os imports
-diretorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if diretorio_raiz not in sys.path:
-    sys.path.append(diretorio_raiz)
-
-# Importa as funções originais do seu projeto
-from data.collector.collector import executar_coleta
-# from data.training.train import sua_funcao_de_treino 
-
-# Importa o motor de procura da nossa pasta app
-from utils import localizar_arquivo
-
-def obter_estatisticas_db():
-    """Consulta a base de dados utilizando a nomenclatura correta do schema (match_hash)."""
-    caminho_db = localizar_arquivo('brawl_data.db') or localizar_arquivo('raw_events.sqlite')
+def get_db_statistics():
+    """Queries the database to return match and brawler counts."""
+    db_path = locate_file('brawl_data.db') or locate_file('raw_events.sqlite')
     
-    if not caminho_db:
+    if not db_path:
         return 0, 0
     
-    conn = sqlite3.connect(caminho_db)
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     
     try:
-        # Correção: Alterado de match_id para match_hash de acordo com o schema.sql
         cur.execute("SELECT COUNT(DISTINCT match_hash) FROM matches")
-        total_partidas = cur.fetchone()[0]
+        total_matches = cur.fetchone()[0]
         
         cur.execute("SELECT COUNT(DISTINCT brawler_name) FROM match_players")
         total_brawlers = cur.fetchone()[0]
     except Exception as e:
-        print(f"Erro ao ler base de dados: {e}")
-        total_partidas, total_brawlers = 0, 0
+        print(f"Database read error: {e}")
+        total_matches, total_brawlers = 0, 0
         
     conn.close()
-    return total_partidas, total_brawlers
-
-import streamlit as st
-import sqlite3
-import os
-import sys
-
-# Garante o reconhecimento da raiz
-diretorio_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if diretorio_raiz not in sys.path:
-    sys.path.append(diretorio_raiz)
-
-# Importações dos motores originais
-from data.collector.collector import executar_coleta
-from data.preprocessing.dataset_builder import construir_dataset # Confirme o nome da função no seu ficheiro
-from data.training.train import treinar_modelo
-
-from utils import localizar_arquivo
+    return total_matches, total_brawlers
 
 
-def renderizar_treinamento():
-    st.title("⚙️ Painel de Controlo de IA")
-    st.write("Efetue a gestão da base de dados e acione a re-calibragem do modelo preditivo.")
+def render_trainer():
+    st.title(t("trainer_title"))
+    st.write(t("trainer_subtitle"))
     
-    total_partidas, total_brawlers = obter_estatisticas_db()
+    total_matches, total_brawlers = get_db_statistics()
     
     st.markdown("---")
-    st.subheader("📊 Saúde da Matriz de Dados")
+    st.subheader(f"📊 {t('db_health')}")
     col1, col2 = st.columns(2)
-    col1.metric("Partidas Únicas Recolhidas", total_partidas)
-    col2.metric("Brawlers Mapeados", total_brawlers)
+    col1.metric(t("unique_matches"), total_matches)
+    col2.metric(t("mapped_brawlers"), total_brawlers)
     
-    if total_partidas < 7000:
-        st.warning("⚠️ Volume Crítico: O modelo necessita de pelo menos 7.000 partidas para generalização matemática.")
+    if total_matches < 7000:
+        st.warning(t("critical_volume_warning"))
     else:
-        st.success("✅ Volume Ideal Alcançado.")
+        st.success(t("ideal_volume_success"))
     
     st.markdown("---")
-    st.subheader("🛠️ Operações de Engenharia (MLOps)")
+    st.subheader(f"🛠️ {t('mlops_operations')}")
     
-    if st.button("📡 Executar Recolha de Dados (Crawler)", use_container_width=True):
-        with st.spinner("A comunicar com a API da Supercell. Isto pode demorar alguns minutos..."):
+    if st.button(t("run_crawler_btn"), width="stretch"):
+        with st.spinner(t("crawler_spinner")):
             try:
-                executar_coleta()
-                st.success("Lote de dados recolhido com sucesso! Navegue para outra página e volte para atualizar os números.")
+                run_collector()
+                st.success(t("crawler_success"))
             except Exception as e:
-                st.error(f"Falha técnica na recolha: {e}")
+                st.error(t("crawler_error").format(e))
                 
-    # O botão de treino agora executa o pipeline completo
-    if st.button("🧠 Compilar e Treinar IA", use_container_width=True):
-        with st.spinner("Passo 1/2: A extrair dados do SQLite e a compilar a matriz CSV..."):
+    if st.button(t("train_model_btn"), width="stretch"):
+        with st.spinner(t("train_step1_spinner")):
             try:
-                # 1. Atualiza o CSV com as partidas novas
-                construir_dataset() 
+                build_dataset() 
                 
-                with st.spinner("Passo 2/2: A treinar o algoritmo Gradient Boosting..."):
-                    # 2. Treina o modelo com o CSV fresco
-                    treinar_modelo()
+                with st.spinner(t("train_step2_spinner")):
+                    train_model()
                     
-                st.success("✅ Pipeline concluído! Novo modelo gerado e guardado nos ficheiros .pkl.")
-                st.info("Pode voltar ao separador 'Previsor de Partidas' para utilizar a inteligência atualizada.")
+                st.success(t("train_success"))
+                st.info(t("train_info"))
             except Exception as e:
-                st.error(f"Erro durante o processo de treino: {e}")
+                st.error(t("train_error").format(e))
