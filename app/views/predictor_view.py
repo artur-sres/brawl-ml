@@ -79,8 +79,6 @@ def renderizar_previsor():
             
             if f'mode_{modo_selecionado}' in colunas_treino: entrada.at[0, f'mode_{modo_selecionado}'] = 1
             if f'map_{mapa_selecionado}' in colunas_treino: entrada.at[0, f'map_{mapa_selecionado}'] = 1
-            if 'delta_power' in colunas_treino: entrada.at[0, 'delta_power'] = 0.0
-            if 'delta_trophies' in colunas_treino: entrada.at[0, 'delta_trophies'] = 0.0
             for b in equipe_0:
                 if f't0_{b}' in colunas_treino: entrada.at[0, f't0_{b}'] = 1
             for b in equipe_1:

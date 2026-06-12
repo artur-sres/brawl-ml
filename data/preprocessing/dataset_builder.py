@@ -78,18 +78,6 @@ def construir_dataset():
         brawlers_t0.sort()
         brawlers_t1.sort()
 
-        # 2. ENGENHARIA DE VARIÁVEIS: Cálculo de Vantagem Técnica
-        # Extrai a média de poder e troféus. O .fillna(0) evita quebras se a API falhar no envio do dado.
-        power_t0 = t0['power'].fillna(0).mean()
-        power_t1 = t1['power'].fillna(0).mean()
-        
-        trophies_t0 = t0['trophies'].fillna(0).mean()
-        trophies_t1 = t1['trophies'].fillna(0).mean()
-
-        # Cria a variável contínua de Diferencial (Delta)
-        delta_power = power_t0 - power_t1
-        delta_trophies = trophies_t0 - trophies_t1
-
         resultado_t0 = t0['result'].iloc[0]
 
         if resultado_t0 in ['draw', 'unknown']:
@@ -108,8 +96,6 @@ def construir_dataset():
             't1_brawler_1': brawlers_t1[0],
             't1_brawler_2': brawlers_t1[1],
             't1_brawler_3': brawlers_t1[2],
-            'delta_power': round(delta_power, 2), # Reduz as casas decimais para otimização
-            'delta_trophies': round(delta_trophies, 2),
             'target': target
         })
 
